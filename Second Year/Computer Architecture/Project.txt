@@ -1,0 +1,294 @@
+module clock_divider ( // slowes the clock to 1hz
+    input         clk_in, 
+    output reg    clk_out 
+);
+
+reg [15:0] counter = 0;
+
+always @(posedge clk_in) begin
+    if (counter == 49999) begin
+        counter <= 0;
+        clk_out <= ~clk_out;
+    end else begin
+        counter <= counter + 1'b1;
+    end
+end
+
+endmodule
+
+module Rom(input clk, input [7:0] address,
+           output reg [7:0] data_out); // the address is obtained through concatinating tcount(4-bit) + pcount(4-bit); the output is in bcd so that it can be thrown to the seven sig instantly
+           
+    always @(posedge clk) begin
+        case(address)
+            8'b00010000: data_out = 8'b00000000;
+            8'b00010001: data_out = 8'b00000011;
+            8'b00010010: data_out = 8'b00000110;
+            8'b00010011: data_out = 8'b00001001;
+            8'b00010100: data_out = 8'b00010010;
+            8'b00010101: data_out = 8'b00010101;
+            8'b00010110: data_out = 8'b00011000;
+            8'b00010111: data_out = 8'b00100001;
+            8'b00100000: data_out = 8'b00000000;
+            8'b00100001: data_out = 8'b00000011;
+            8'b00100010: data_out = 8'b00000100;
+            8'b00100011: data_out = 8'b00000110;
+            8'b00100100: data_out = 8'b00000111;
+            8'b00100101: data_out = 8'b00001001;
+            8'b00100110: data_out = 8'b00010000;
+            8'b00100111: data_out = 8'b00010010;
+            8'b00110000: data_out = 8'b00000000;
+            8'b00110001: data_out = 8'b00000011;
+            8'b00110010: data_out = 8'b00000100;
+            8'b00110011: data_out = 8'b00000101;
+            8'b00110100: data_out = 8'b00000110;
+            8'b00110101: data_out = 8'b00000111;
+            8'b00110110: data_out = 8'b00001000;
+            8'b00110111: data_out = 8'b00001001;
+            default: data_out = 8'b00000000;
+        endcase
+    end
+    
+endmodule
+
+
+module FSM(clk, reset, pcount, in, out, full, empty);
+input clk, reset, in, out;
+input [2:0] pcount;
+reg [2:0] state;
+output reg full, empty;
+parameter 	s0 = 3'b000, // Empty
+		s1 = 3'b001, // Add
+		s2 = 3'b010, // NotFullOrEmpty
+		s3 = 3'b011, // Subtract
+		s4 = 3'b100; // Full
+
+always @(posedge clk or posedge reset)
+
+begin
+if(reset)
+begin
+state = 0;
+empty = 1;
+full = 0;
+end
+else
+begin
+
+
+case(state)
+s0: 	
+	if(in == 1 && out == 0)
+		begin
+			state = s1; 
+		end
+
+s1: 	//Additiotn
+	if(pcount == 7)  
+		begin
+			state = s4;
+			full = 1;
+			empty = 0;
+		end
+	else 		
+		begin
+			state = s2;
+			full = 0;
+			empty = 0;
+		end
+
+s2:	//Not Empty OR Full
+	if(in == 1 && out == 0) 	
+		begin
+			state = s1; // s1 : Add
+		end
+	else if (in == 0 && out == 1)
+		begin
+			state = s3; // s3 : Subtract
+		end
+
+s3:	//Subtraction
+	if(pcount == 0)  
+		begin
+			state = s0; // s0 : Empty
+			full = 0;
+			empty = 1;
+		end
+	else 		
+		begin
+			state = s2; // s2 : not full or empty
+			full = 0;
+			empty = 0;
+		end
+s4:	//Full
+	if(in == 0 && out == 1)
+		begin
+			state = s3; // s3 : Subtract
+		end
+endcase 
+end
+end
+endmodule
+
+module sevenSegments (clk, reset , A ,B,C,D,leda,ledb,ledc,ledd,lede,ledf,ledg); // displayes the 4 bit input on a 7-sig
+input clk,A ,B,C,D,reset; 
+output reg leda;
+output reg ledb;
+output reg ledc;
+output reg ledd;
+output reg lede;
+output reg ledf;
+output reg ledg;
+always@(posedge clk or posedge reset) begin
+if(reset)
+begin
+leda = 1'b0;
+ledb = 1'b0;
+ledc = 1'b0;
+ledd = 1'b0;
+lede = 1'b0;
+ledf = 1'b0;
+ledg = 1'b0;
+end 
+else
+begin
+leda=~(A|C|B & C|~B&~D);
+ledb=~(~B|~C&~D|C&D);
+ledc=~(B|~C|D);
+ledd=~(~B&~D|C&~D|B& ~C & D | ~B&C | A);
+lede=~(~B&~D|C&~D);
+ledf=~(A|~C&~D|B&~C|B&~D);
+ledg=~(A| B&~C | ~B&C | C & ~D);
+end
+end
+endmodule
+
+module up_down_counter ( // increases the pcount if the in button is pressed and decreases the pcount if the out button is pressed (pcount cannot go under 0 or above 7)
+  input clk, 
+  input reset, 
+  input in, 
+  input out,
+  output reg [2:0] pcount
+);
+
+  always @(posedge clk or posedge reset) begin
+    if (reset) begin
+      pcount <= 3'b000;
+    end else if (in && (pcount < 3'b111)) begin
+      pcount <= pcount + 1;
+    end else if (out && (pcount > 3'b000)) begin
+      pcount <= pcount - 1;
+    end
+  end
+
+endmodule
+
+module synchronizer(input clk, input button, output result); // prevents debounce. the cercuit is drawn in the project requierment pdf
+  reg state;
+always@ (posedge clk)
+begin
+state <= button;
+end
+assign result = button & ~state;
+endmodule
+
+module abqm (input clk , // the top level design. it combines all the modules together
+input reset,
+input in,
+input out,
+input [1:0]tcount,
+output wire full_flag,
+output wire empty_flag,
+output wire [6:0] segmentleft,
+output wire [6:0] segmentright,
+output wire [6:0] segmentpcount,
+output wire [2:0] pcount,
+output wire [3:0] address1,
+output wire [3:0] address2,
+output wire [7:0]wait_time 
+);
+wire sync_button_in;  
+  wire sync_button_out;
+wire CLK1Hz;
+clock_divider clk_inst(clk, CLK1Hz); // using the clock_divider will cause the output wave to be wrong. only used when connecting to fbga
+
+  synchronizer sync_in (CLK1Hz, in, sync_button_in);  // using the synchronizer will cause the output wave to be wrong. only used when connecting to fbga
+  synchronizer sync_out (CLK1Hz, out, sync_button_out);
+
+up_down_counter counter(clk,reset,in,out,pcount); // calculates pcount
+
+
+FSM fsm_inst(  // outputs full and empty flag
+clk, reset, pcount, in, out, full_flag, empty_flag
+);
+assign address1 = {2'b00 , tcount}; // tcount is 2 bits so for the address to be concatinated correctly it needs to be extended to 4 bits
+assign address2 = {1'b0, pcount}; // pcount is 3 bits so for the address to be concatinated correctly it needs to be extended to 4 bits
+Rom rom_inst (clk, {address1,address2}, wait_time); // outputs the wait time which is in bcd(wait time equation is in the project description pdf)
+// sevenSegments converts 4 bits of the wait time into 7-seg display  
+sevenSegments segright(clk, reset , wait_time[3],wait_time[2],wait_time[1],wait_time[0],segmentright[0],segmentright[1],segmentright[2],segmentright[3],segmentright[4],segmentright[5],segmentright[6]); // seven seg of the unit value in wait time
+sevenSegments segleft(clk, reset , wait_time[3],wait_time[2],wait_time[1],wait_time[0],segmentleft[0],segmentleft[1],segmentleft[2],segmentleft[3],segmentleft[4],segmentleft[5],segmentleft[6]); // seven seg of the tenth value in wait time
+sevenSegments segpcount(clk, reset,address2[3],address2[2],address2[1],address2[0],segmentpcount[0],segmentpcount[1],segmentpcount[2],segmentpcount[3],segmentpcount[4],segmentpcount[5],segmentpcount[6]); // seven seg of the pcount value
+endmodule
+
+module abqm_tb; // top level design test bench(this module is the one that will be simulated)
+
+  reg clk = 0;
+  reg reset = 0;
+  reg in = 0;
+  reg out = 0;
+  reg [1:0] tcount = 1;
+  
+  // Outputs
+  wire Full_flag;
+  wire Empty_flag;
+  wire [6:0] OutputSegmentRight;
+  wire [6:0] OutputSegmentLeft;
+wire [6:0] OutputSegmentPcount;
+wire [2:0]pcount;
+wire [3:0] address1 ; 
+wire [3:0] address2 ; 
+  wire [7:0] Wait_Time ;
+
+abqm uut (
+    clk,
+    reset,
+    in,
+    out,
+    tcount,
+    Full_flag,
+    Empty_flag,
+    OutputSegmentLeft,
+    OutputSegmentRight,
+    OutputSegmentPcount
+,pcount
+,address1
+,address2
+,Wait_Time
+  );
+
+always #5 clk = ~clk;
+initial
+begin
+#10 reset = 1;
+#10 reset = 0;
+#10 in = 1;out = 0; tcount = 2;
+#10 in = 1;out = 0; tcount = 2;
+#10 in = 1;out = 0; tcount = 2;
+#10 in = 1;out = 0; tcount = 3;
+#10 in = 1;out = 0; tcount = 3;
+#10 in = 1;out = 0; tcount = 1;
+#10 in = 1;out = 0; tcount = 2;
+
+#10
+#10
+
+#10 in = 0;out = 1; tcount = 1;
+#10 in = 0;out = 1; tcount = 1;
+#10 in = 0;out = 1; tcount = 1;
+#10 in = 0;out = 1; tcount = 1;
+#10 in = 0;out = 1; tcount = 1;
+end
+
+endmodule
+
+
